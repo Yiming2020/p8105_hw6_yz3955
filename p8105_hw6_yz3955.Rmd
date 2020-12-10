@@ -222,7 +222,7 @@ weather_df %>%
   geom_point() +
   geom_smooth(method = "lm")
 ```
-It seems like a simple linear regression
+It seems like a simple linear regression. 
 
 ### 5000 Bootstrap samples
 
@@ -248,6 +248,8 @@ weather_bootst %>%
   ggplot(aes(x = r.squared)) +
   geom_density()
 ```
+The density plot shows that r^2 follows an approximately normal distribution. According to CLT(central limit theorem), the sampling distribution of R^2 should follows an approximately normal distribution with mean equal to true R^2. So the mean of these estimate r^2 should be close to the true r^2. 
+
 
 #### 95% confidence interval for r^2
 ```{r}
@@ -279,6 +281,8 @@ weather_bootst %>%
   geom_density() +
   xlab("log(β 0 * β̂ 1)")
 ```
+The density plot shows that log(β̂ 0∗β̂ 1) follows an approximately normal distribution.  
+Since r^2 and log(β̂ 0∗β̂ 1) both follow approximately normal distributions,lm() should be considered as a good choice for the regression model.
 
 #### 95% confidence interval for log(β̂ 0∗β̂ 1)
 
