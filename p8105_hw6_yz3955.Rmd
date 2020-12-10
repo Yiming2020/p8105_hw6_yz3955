@@ -48,6 +48,8 @@ homicide_df =
 Start with one city.
 
 ```{r}
+
+#binomal(link=’logit’) #output follows binomial，link regression is logit，logistic regression
 baltimore_df =
   homicide_df %>% 
   filter(city_state == "Baltimore, MD")
@@ -62,6 +64,8 @@ glm(resolution ~ victim_age + victim_race + victim_sex,
   ) %>% 
   select(term, OR, starts_with("CI")) %>% 
   knitr::kable(digits = 3)
+
+## recall for logistic regression calculation equation:https://stats.stackexchange.com/questions/354098/calculating-confidence-intervals-for-a-logistic-regression
 ```
 
 
@@ -79,7 +83,7 @@ models_results_df =
   select(city_state, results) %>% 
   unnest(results) %>% 
   mutate(
-    OR = exp(estimate),
+    OR = exp(estimate), #  the odds ratio can be computed by raising e to the power of the logistic coefficient,
     CI_lower = exp(estimate - 1.96 * std.error),
     CI_upper = exp(estimate + 1.96 * std.error)
   ) %>% 
@@ -100,22 +104,97 @@ models_results_df %>%
 
 ## Problem 2
 
-Find some residuals
+### load data
 
 ```{r}
 baby_df = 
-  read_csv("./data/birthweight.csv")
+  read_csv("./data/birthweight.csv") %>% 
+  mutate(
+    babysex = ifelse(babysex == 1, "male", "female"),
+    babysex = as.factor(babysex),
+    frace = case_when(
+      frace == 1 ~ "White", 
+      frace == 2 ~ "Black", 
+      frace == 3 ~ "Asian",
+      frace == 4 ~ "Puerto Rican",
+      frace == 8 ~ "Other",
+      frace == 9 ~ "Unknown"),
+    mrace = case_when(
+      mrace == 1 ~ "White", 
+      mrace == 2 ~ "Black", 
+      mrace == 3 ~ "Asian",
+      mrace == 4 ~ "Puerto Rican",
+      mrace == 8 ~ "Other"),
+   malform = ifelse(malform == 0, "absert", "present"),
+   malform = as.factor(malform)
+  )
 ```
 
-fit a model
+### fit a model:
+In order to get a hypothesized structure of linear model, I used Stepwise regression with both direction.  
 
-```{r}
-model_fit = lm(bwt ~ gaweeks, data = baby_df)
+
+First build the hypothesized model:
+```{r warning = FALSE}
+model_fit = 
+  lm(bwt ~., data = baby_df) %>% 
+  step(direction = "both")
+summary(model_fit)
 ```
+After calculting AIC score for adding a variable or remove a variable, the final model for birthweight prediction includes variables:babysexmale, bhead, blength, delwt, fincome, gaweeks, mheight, mrace, parity, ppwt, smoken.  
 
+
+#### a plot of model residuals against fitted values:
 ```{r}
 baby_df %>% 
   modelr::add_residuals(model_fit) %>% 
-  ggplot(aes(x = gaweeks, y = resid)) + 
+  add_predictions(model_fit) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
   geom_point()
 ```
+The points of residuals vs fitted plot concentrated at residuals = 0.  
+The residuals roughly form a "horizontal band" around the 0 line but the residuals doesn't seem to "bounce randomly" around the 0 line.
+
+### create two other models
+fit2 using length at brith and gestational age as predictors.  
+fit3 using head circumference, length, sex, and all interactions (including the three-way interaction) between these
+```{r warning=FALSE}
+fit2 = lm(bwt ~ blength + gaweeks, data = baby_df)
+fit3 = lm(bwt ~ blength * bhead * babysex, data = baby_df)
+```
+
+### cross validation
+
+```{r warning=FALSE}
+birthw_cv = 
+  crossv_mc(baby_df, 1000) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble),
+    step_mod = map(.x = train, ~lm(bwt ~., data = .x)),
+    fit2_mod = map(.x = train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    fit3_mod = map(.x = train, ~lm(bwt ~ blength * bhead * babysex, data = .x))) %>% 
+  mutate(
+    rmse_step = map2_dbl(step_mod, test, ~rmse(model = .x, data = .y)),
+    rmse_fit2    = map2_dbl(fit2_mod, test, ~rmse(model = .x, data = .y)),
+    rmse_fit3 = map2_dbl(fit3_mod, test, ~rmse(model = .x, data = .y))
+  )
+
+```
+
+#### make a boxplot of rmse in different models
+```{r}
+birthw_cv %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin()
+```
+
+From above boxplot, we can easily see that my model(stepwise regression) is the optimal one. It has the smallest mean and median of rmse. Fit3 is better than fit1, which means that the model should not only include length at birth and gestational age as predictors.  
+
